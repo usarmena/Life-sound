@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Sound Lite</title>
+    <style>
+        :root {
+            --vol-rain: 0;
+            --vol-fire: 0;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f0f0f;
+            color: #e0e0e0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 背景動態微光疊加層 */
+        .bg-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+            transition: opacity 0.2s ease;
+            mix-blend-mode: screen;
+        }
+        
+        .bg-rain { background: radial-gradient(circle at 20% 20%, rgba(20, 50, 120, 0.6), transparent 60%); opacity: var(--vol-rain); }
+        .bg-fire { background: linear-gradient(to top, rgba(220, 80, 20, 0.3) 0%, transparent 45%); opacity: var(--vol-fire); }
+
+        /* 特效畫布 */
+        #vfxCanvas {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            filter: blur(0.5px);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        /* 主控台卡片 */
+        .mixer-container {
+            position: relative;
+            z-index: 10;
+            background: rgba(30, 30, 30, 0.6);
+            backdrop-filter: blur(15px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 320px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            /* 加上一個微微的浮動動畫讓它更生動 */
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            margin: 0 0 15px 0;
+            font-size: 24px;
+            font-weight: 500;
+            letter-spacing: 2px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .play-btn, .vfx-btn {
+            background-color: #ffffff;
+            color: #000000;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .vfx-btn {
+            background-color: #333333;
+            color: #ffffff;
+            border: 1px solid #555555;
+        }
+
+        .play-btn:hover { transform: scale(1.05); background-color: #cccccc; }
+        .vfx-btn:hover { transform: scale(1.05); background-color: #555555; }
+
+        /* 滑桿區域 */
+        .track {
+            margin-bottom: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .track-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #aaaaaa;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #444444;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-layer bg-rain"></div>
+    <div class="bg-layer bg-fire"></div>
+    
+    <canvas id="vfxCanvas"></canvas>
+
+    <div class="mixer-container">
+        <div class="header">
+            <h1>Life Sound Lite</h1>
+            <div class="btn-group">
+                <button class="play-btn" id="masterPlayBtn">播放全部</button>
+                <button class="vfx-btn" id="vfxToggleBtn">✨ 特效: 開</button>
+            </div>
+        </div>
+
+        <div class="track">
+            <div class="track-info"><span>🌧️ 下雨聲</span> <span id="val-rain">0%</span></div>
+            <input type="range" id="slider-rain" min="0" max="100" value="0">
+            <audio id="audio-rain"></audio>
+        </div>
+
+        <div class="track">
+            <div class="track-info"><span>🔥 營火聲</span> <span id="val-fire">0%</span></div>
+            <input type="range" id="slider-fire" min="0" max="100" value="0">
+            <audio id="audio-fire"></audio>
+        </div>
+
+        <div class="track">
+            <div class="track-info"><span>⌨️ 鍵盤敲擊</span> <span id="val-keyboard">0%</span></div>
+            <input type="range" id="slider-keyboard" min="0" max="100" value="0">
+            <audio id="audio-keyboard"></audio>
+        </div>
+
+        <div class="track">
+            <div class="track-info"><span>🌊 海浪聲</span> <span id="val-waves">0%</span></div>
+            <input type="range" id="slider-waves" min="0" max="100" value="0">
+            <audio id="audio-waves"></audio>
+        </div>
+    </div>
+
+    <script>
+        const tracks = ['rain', 'fire', 'keyboard', 'waves'];
+        let isPlaying = false;
+        let isVfxEnabled = true;
+
+        const masterBtn = document.getElementById('masterPlayBtn');
+        const vfxBtn = document.getElementById('vfxToggleBtn');
+        const vfxCanvas = document.getElementById('vfxCanvas');
+        const ctx = vfxCanvas.getContext('2d');
+
+        const trackFiles = {
+            'rain': ['rain1.mp3', 'rain2.mp3', 'rain3.mp3', 'rain4.mp3'],
+            'fire': ['fire1.mp3', 'fire2.mp3', 'fire3.mp3', 'fire4.mp3'],
+            'keyboard': ['keyboard1.mp3', 'keyboard2.mp3', 'keyboard3.mp3'],
+            'waves': ['waves1.mp3', 'waves2.mp3', 'waves3.mp3', 'waves4.mp3']
+        };
+
+        // ====== 視覺特效引擎 ======
+        let rainDrops = [];
+        const maxDrops = 300;
+        let fireSparks = []; 
+
+        // ★ 新增：滑鼠座標追蹤
+        let mouse = { x: -1000, y: -1000 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        // 滑鼠離開視窗時移開座標
+        window.addEventListener('mouseout', () => {
+            mouse.x = -1000;
+            mouse.y = -1000;
+        });
+
+        function resizeCanvas() {
+            vfxCanvas.width = window.innerWidth;
+            vfxCanvas.height = window.innerHeight;
+            
+            rainDrops = [];
+            for (let i = 0; i < maxDrops; i++) {
+                rainDrops.push({
+                    x: Math.random() * vfxCanvas.width,
+                    y: Math.random() * vfxCanvas.height,
+                    len: Math.random() * 20 + 10,
+                    speed: Math.random() * 15 + 10
+                });
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawVFX() {
+            ctx.clearRect(0, 0, vfxCanvas.width, vfxCanvas.height);
+            
+            if (!isVfxEnabled) {
+                vfxCanvas.style.opacity = 0;
+                requestAnimationFrame(drawVFX);
+                return;
+            }
+            vfxCanvas.style.opacity = 1;
+
+            const rainVol = document.getElementById('slider-rain').value / 100;
+            const fireVol = document.getElementById('slider-fire').value / 100;
+            const wavesVol = document.getElementById('slider-waves').value / 100;
+            const time = Date.now() * 0.001;
+
+            // ★ 新增：繪製游標的柔和微光
+            if (rainVol > 0 || fireVol > 0 || wavesVol > 0) {
+                let mouseGlow = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 150);
+                mouseGlow.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
+                mouseGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = mouseGlow;
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, 150, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 【圖層 1：海浪】
+            if (wavesVol > 0) {
+                let waveLayers = 5;
+                let waveData = [];
+                for (let i = 0; i < waveLayers; i++) {
+                    let progress = (time * 0.25 + i / waveLayers) % 1;
+                    waveData.push({ progress: progress, id: i });
+                }
+                waveData.sort((a, b) => a.progress - b.progress);
+
+                for (let j = 0; j < waveLayers; j++) {
+                    let prog = waveData[j].progress;
+                    let p = prog * prog; 
+                    let id = waveData[j].id; 
+                    let yBase = vfxCanvas.height - (35 - p * 45) * wavesVol;
+                    let amplitude = (3 + p * 15) * wavesVol;
+                    let freq1 = 0.012 - p * 0.008; 
+                    let freq2 = 0.018 - p * 0.012;
+                    let alphaPhase = Math.sin(prog * Math.PI); 
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, vfxCanvas.height);
+                    
+                    for (let x = 0; x <= vfxCanvas.width + 20; x += 20) {
+                        let swell = Math.sin(x * freq1 + time * 1.5 + id * 10) * amplitude;
+                        let chop = Math.cos(x * freq2 - time + id * 10) * amplitude * 0.4;
+                        ctx.lineTo(x, yBase + swell + chop);
+                    }
+                    ctx.lineTo(vfxCanvas.width, vfxCanvas.height);
+                    ctx.lineTo(0, vfxCanvas.height);
+                    ctx.closePath();
+
+                    let r = Math.floor(11 + p * 24); 
+                    let g = Math.floor(29 + p * 45); 
+                    let b = Math.floor(40 + p * 47); 
+                    let baseAlpha = (0.4 + p * 0.4) * alphaPhase; 
+                    
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${baseAlpha * wavesVol})`;
+                    ctx.fill();
+                }
+            }
+
+            // 【圖層 2：營火火星與游標互動】
+            if (fireVol > 0) {
+                let spawnChance = fireVol * 2; 
+                if (Math.random() < spawnChance) {
+                    fireSparks.push({
+                        x: Math.random() * vfxCanvas.width, 
+                        y: vfxCanvas.height + 10, 
+                        size: Math.random() * 3 + 1,
+                        speedY: -(Math.random() * 2 + 1) * (0.8 + fireVol * 0.5), 
+                        speedX: (Math.random() - 0.5) * 1.5, 
+                        life: 1.0, 
+                        decay: Math.random() * 0.015 + 0.005 
+                    });
+                }
+
+                for (let i = fireSparks.length - 1; i >= 0; i--) {
+                    let p = fireSparks[i];
+                    
+                    // ★ 新增：火星碰到滑鼠會被彈開
+                    let dxF = p.x - mouse.x;
+                    let dyF = p.y - mouse.y;
+                    let distF = Math.sqrt(dxF*dxF + dyF*dyF);
+                    if (distF < 100) {
+                        p.speedX += dxF * 0.005; // 產生水平擾動
+                        p.speedY += dyF * 0.002; // 產生垂直擾動
+                    }
+
+                    p.x += p.speedX;
+                    p.y += p.speedY;
+                    p.life -= p.decay;
+
+                    if (p.life <= 0 || p.x < 0 || p.x > vfxCanvas.width) {
+                        fireSparks.splice(i, 1);
+                        continue;
+                    }
+
+                    let r = 255;
+                    let g = Math.floor(150 * p.life);
+                    let b = 0;
+
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${p.life * fireVol})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 【圖層 3：下雨與游標互動】
+            if (rainVol > 0) {
+                const activeDrops = Math.floor(maxDrops * rainVol);
+                ctx.strokeStyle = `rgba(200, 220, 255, ${0.5 * rainVol})`;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                
+                for (let i = 0; i < activeDrops; i++) {
+                    let p = rainDrops[i];
+                    
+                    // ★ 新增：雨滴靠近滑鼠時會產生物理偏移
+                    let dxR = p.x - mouse.x;
+                    let dyR = p.y - mouse.y;
+                    let distR = Math.sqrt(dxR*dxR + dyR*dyR);
+                    if (distR < 120) {
+                        p.x += dxR * 0.03; // 被滑鼠推開
+                    }
+
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(p.x + p.len * 0.1, p.y + p.len);
+                    
+                    p.y += p.speed;
+                    p.x += p.speed * 0.1;
+                    
+                    if (p.y > vfxCanvas.height || p.x < 0 || p.x > vfxCanvas.width) {
+                        p.y = -20;
+                        p.x = Math.random() * vfxCanvas.width;
+                    }
+                }
+                ctx.stroke();
+            }
+
+            requestAnimationFrame(drawVFX);
+        }
+        drawVFX();
+
+        vfxBtn.addEventListener('click', () => {
+            isVfxEnabled = !isVfxEnabled;
+            vfxBtn.innerText = isVfxEnabled ? "✨ 特效: 開" : "✨ 特效: 關";
+            vfxBtn.style.backgroundColor = isVfxEnabled ? "#333333" : "#555555";
+        });
+
+        function init() {
+            const savedVolumes = JSON.parse(localStorage.getItem('lifeSoundVolumes')) || {};
+            tracks.forEach(track => {
+                const slider = document.getElementById(`slider-${track}`);
+                const audio = document.getElementById(`audio-${track}`);
+                const files = trackFiles[track];
+                
+                audio.src = files[Math.floor(Math.random() * files.length)];
+                
+                audio.addEventListener('ended', () => {
+                    const randomIndex = Math.floor(Math.random() * files.length);
+                    audio.src = files[randomIndex];
+                    if (isPlaying) audio.play();
+                });
+
+                const savedVol = savedVolumes[track] !== undefined ? savedVolumes[track] : 0;
+                slider.value = savedVol;
+                updateVolume(track, savedVol);
+
+                slider.addEventListener('input', (e) => {
+                    const val = e.target.value;
+                    updateVolume(track, val);
+                    saveVolumes();
+                    if (!isPlaying && val > 0) togglePlay();
+                });
+            });
+        }
+
+        function updateVolume(track, val) {
+            const audio = document.getElementById(`audio-${track}`);
+            const display = document.getElementById(`val-${track}`);
+            const volumeRatio = val / 100;
+            audio.volume = volumeRatio;
+            display.innerText = `${val}%`;
+            
+            if (track === 'rain' || track === 'fire') {
+                document.documentElement.style.setProperty(`--vol-${track}`, volumeRatio);
+            }
+        }
+
+        function saveVolumes() {
+            const volumes = {};
+            tracks.forEach(track => {
+                volumes[track] = document.getElementById(`slider-${track}`).value;
+            });
+            localStorage.setItem('lifeSoundVolumes', JSON.stringify(volumes));
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            masterBtn.innerText = isPlaying ? "暫停全部" : "播放全部";
+            tracks.forEach(track => {
+                const audio = document.getElementById(`audio-${track}`);
+                if (isPlaying) {
+                    audio.play().catch(e => console.log("等待互動以播放"));
+                } else {
+                    audio.pause();
+                }
+            });
+        }
+
+        masterBtn.addEventListener('click', togglePlay);
+        init();
+    </script>
+</body>
+</html>
